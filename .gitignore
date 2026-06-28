@@ -1,0 +1,13 @@
+# OS / editor cruft
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local secrets / state — never commit
+.env
+.env.*
+.smb/
+.smb-dev/
+*.pem
+*.key

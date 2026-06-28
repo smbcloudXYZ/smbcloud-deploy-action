@@ -1,0 +1,198 @@
+name: "smbCloud Deploy"
+description: "Install the smbCloud CLI (smb) and deploy an app non-interactively from CI."
+author: "smbCloud (Splitfire AB)"
+
+branding:
+  icon: "upload-cloud"
+  color: "blue"
+
+inputs:
+  token:
+    description: >-
+      smbCloud auth token contents. Provision it once (see docs/ci.md in
+      smbcloud-cli) and pass it from a CI secret. Written to the CLI state dir
+      so `smb` is authenticated without an interactive `smb login`.
+    required: true
+  environment:
+    description: "smbCloud environment: production or dev."
+    required: false
+    default: "production"
+  project:
+    description: >-
+      Sub-project name to deploy for monorepo configs with [[projects]] entries.
+      Matches the `name` field in .smb/config.toml. Omit for single-project configs.
+    required: false
+    default: ""
+  working-directory:
+    description: "Directory containing .smb/config.toml. Defaults to the repo root."
+    required: false
+    default: "."
+  version:
+    description: >-
+      smbCloud CLI version to install (e.g. 0.5.0 or v0.5.0). Use 'latest' for
+      the most recent GitHub release.
+    required: false
+    default: "latest"
+  ssh-private-key:
+    description: >-
+      Optional SSH private key contents for rsync/SSH deploy paths. Installed at
+      ~/.ssh/<ssh-key-name>.
+    required: false
+    default: ""
+  ssh-key-name:
+    description: >-
+      Filename for the installed SSH private key under ~/.ssh. smbCloud rsync
+      deploys expect the account-scoped name `id_<user-id>@smbcloud`. Required
+      when ssh-private-key is set.
+    required: false
+    default: ""
+  ssh-known-hosts:
+    description: >-
+      Optional known_hosts entries appended to ~/.ssh/known_hosts. Recommended
+      for SSH deploys instead of disabling host-key checking.
+    required: false
+    default: ""
+  args:
+    description: "Extra arguments appended to the `smb deploy` invocation."
+    required: false
+    default: ""
+  cli-repository:
+    description: "GitHub repository to download the CLI binary from."
+    required: false
+    default: "smbcloudXYZ/smbcloud-cli"
+
+outputs:
+  smb-path:
+    description: "Absolute path to the installed smb binary."
+    value: ${{ steps.install.outputs.smb-path }}
+  version:
+    description: "Resolved CLI version that was installed."
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install smbCloud CLI
+      id: install
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_CLI_REPOSITORY: ${{ inputs.cli-repository }}
+      run: |
+        set -euo pipefail
+
+        case "$(uname -s)" in
+          Linux)  os="linux" ;;
+          Darwin) os="macos" ;;
+          MINGW*|MSYS*|CYGWIN*) os="win" ;;
+          *) echo "::error::Unsupported OS: $(uname -s)"; exit 1 ;;
+        esac
+
+        case "$(uname -m)" in
+          x86_64|amd64)   arch="amd64" ;;
+          arm64|aarch64)  arch="arm64" ;;
+          *) echo "::error::Unsupported architecture: $(uname -m)"; exit 1 ;;
+        esac
+
+        asset="smb-${os}-${arch}"
+        bin_name="smb"
+        if [ "$os" = "win" ]; then
+          asset="${asset}.exe"
+          bin_name="smb.exe"
+        fi
+
+        if [ "${INPUT_VERSION}" = "latest" ]; then
+          url="https://github.com/${INPUT_CLI_REPOSITORY}/releases/latest/download/${asset}"
+        else
+          tag="${INPUT_VERSION#v}"
+          url="https://github.com/${INPUT_CLI_REPOSITORY}/releases/download/v${tag}/${asset}"
+        fi
+
+        install_dir="${RUNNER_TEMP:-/tmp}/smbcloud-cli-bin"
+        mkdir -p "$install_dir"
+        smb_path="${install_dir}/${bin_name}"
+
+        echo "Downloading ${asset} from ${url}"
+        curl --fail --location --retry 3 --retry-delay 2 --proto '=https' --tlsv1.2 \
+          --output "$smb_path" "$url"
+        chmod +x "$smb_path"
+
+        echo "$install_dir" >> "$GITHUB_PATH"
+        echo "smb-path=${smb_path}" >> "$GITHUB_OUTPUT"
+
+        resolved_version="$("$smb_path" --version 2>/dev/null | awk '{print $NF}' || echo "${INPUT_VERSION}")"
+        echo "version=${resolved_version}" >> "$GITHUB_OUTPUT"
+        echo "Installed smb ${resolved_version} at ${smb_path}"
+
+    - name: Configure smbCloud credentials
+      shell: bash
+      env:
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_SSH_PRIVATE_KEY: ${{ inputs.ssh-private-key }}
+        INPUT_SSH_KEY_NAME: ${{ inputs.ssh-key-name }}
+        INPUT_SSH_KNOWN_HOSTS: ${{ inputs.ssh-known-hosts }}
+      run: |
+        set -euo pipefail
+
+        if [ -z "${INPUT_TOKEN}" ]; then
+          echo "::error::'token' input is required."
+          exit 1
+        fi
+
+        case "${INPUT_ENVIRONMENT}" in
+          production) smb_dir=".smb" ;;
+          dev)        smb_dir=".smb-dev" ;;
+          *) echo "::error::Invalid environment '${INPUT_ENVIRONMENT}' (use 'production' or 'dev')."; exit 1 ;;
+        esac
+
+        state_dir="${HOME}/${smb_dir}"
+        mkdir -p "$state_dir"
+        umask 077
+        printf '%s' "${INPUT_TOKEN}" > "${state_dir}/token"
+        chmod 600 "${state_dir}/token"
+        echo "Wrote auth token to ${state_dir}/token"
+
+        if [ -n "${INPUT_SSH_PRIVATE_KEY}" ]; then
+          if [ -z "${INPUT_SSH_KEY_NAME}" ]; then
+            echo "::error::'ssh-key-name' is required when 'ssh-private-key' is set."
+            exit 1
+          fi
+          ssh_dir="${HOME}/.ssh"
+          mkdir -p "$ssh_dir"
+          chmod 700 "$ssh_dir"
+          key_path="${ssh_dir}/${INPUT_SSH_KEY_NAME}"
+          printf '%s\n' "${INPUT_SSH_PRIVATE_KEY}" > "$key_path"
+          chmod 600 "$key_path"
+          echo "Installed SSH key at ${key_path}"
+
+          if [ -n "${INPUT_SSH_KNOWN_HOSTS}" ]; then
+            printf '%s\n' "${INPUT_SSH_KNOWN_HOSTS}" >> "${ssh_dir}/known_hosts"
+            chmod 600 "${ssh_dir}/known_hosts"
+            echo "Appended entries to ${ssh_dir}/known_hosts"
+          fi
+        fi
+
+    - name: Deploy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        SMB_CI: "1"
+        INPUT_ENVIRONMENT: ${{ inputs.environment }}
+        INPUT_PROJECT: ${{ inputs.project }}
+        INPUT_ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+
+        cmd=(smb --ci --environment "${INPUT_ENVIRONMENT}" deploy)
+        if [ -n "${INPUT_PROJECT}" ]; then
+          cmd+=(--project "${INPUT_PROJECT}")
+        fi
+        if [ -n "${INPUT_ARGS}" ]; then
+          # shellcheck disable=SC2206
+          extra=(${INPUT_ARGS})
+          cmd+=("${extra[@]}")
+        fi
+
+        echo "Running: ${cmd[*]}"
+        "${cmd[@]}"

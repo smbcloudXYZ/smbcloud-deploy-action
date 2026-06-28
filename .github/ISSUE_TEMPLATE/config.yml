@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/smbcloudXYZ/smbcloud-deploy-action/security/policy
+    about: Please report security issues privately — do not open a public issue. See SECURITY.md.
+  - name: smbCloud CLI
+    url: https://github.com/smbcloudXYZ/smbcloud-cli
+    about: For issues with the `smb` CLI itself (deploy logic, config), use the CLI repo.

@@ -177,7 +177,9 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       env:
-        SMB_CI: "1"
+        # The CLI's --ci flag binds env SMB_CI and parses it as a strict bool,
+        # so this must be "true"/"false", not "1". We also pass --ci explicitly.
+        SMB_CI: "true"
         INPUT_ENVIRONMENT: ${{ inputs.environment }}
         INPUT_PROJECT: ${{ inputs.project }}
         INPUT_ARGS: ${{ inputs.args }}

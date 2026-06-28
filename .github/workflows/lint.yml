@@ -13,7 +13,7 @@ jobs:
     name: actionlint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate action.yml parses
         run: python3 -c "import yaml; yaml.safe_load(open('action.yml'))"

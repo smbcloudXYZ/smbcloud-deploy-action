@@ -20,7 +20,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: smbcloudXYZ/smbcloud-deploy-action@v1
         with:
           token: ${{ secrets.SMB_TOKEN }}

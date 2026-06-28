@@ -1,5 +1,9 @@
 # smbCloud Deploy Action
 
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-smbCloud%20Deploy-blue?logo=github)](https://github.com/marketplace/actions/smbcloud-deploy)
+[![Lint](https://github.com/smbcloudXYZ/smbcloud-deploy-action/actions/workflows/lint.yml/badge.svg)](https://github.com/smbcloudXYZ/smbcloud-deploy-action/actions/workflows/lint.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 A composite GitHub Action that installs the [smbCloud CLI](https://github.com/smbcloudXYZ/smbcloud-cli)
 (`smb`) and deploys your app non-interactively from CI.
 
